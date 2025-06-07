@@ -28,7 +28,7 @@ func main() {
 
 	pathToDB := os.Getenv("DB_PATH")
 	if pathToDB == "" {
-		log.Fatal("DB_URL must be set")
+		log.Fatal("DB_PATH must be set")
 	}
 
 	db, err := database.NewClient(pathToDB)
@@ -98,7 +98,7 @@ func main() {
 	mux.Handle("/app/", appHandler)
 
 	assetsHandler := http.StripPrefix("/assets", http.FileServer(http.Dir(assetsRoot)))
-	mux.Handle("/assets/", cacheMiddleware(assetsHandler))
+	mux.Handle("/assets/", noCacheMiddleware(assetsHandler))
 
 	mux.HandleFunc("POST /api/login", cfg.handlerLogin)
 	mux.HandleFunc("POST /api/refresh", cfg.handlerRefresh)
