@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -33,4 +37,39 @@ func mediaTypeToExt(mediaType string) string {
 		return ".bin"
 	}
 	return "." + parts[1]
+}
+
+func getVideoAspectRation(filePath string) (string, error) {
+	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
+	cmd.Stdout = &bytes.Buffer{}
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to get video aspect ratio, %w", err)
+	}
+	type Stream struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	}
+	type VideoInfo struct {
+		Streams []Stream `json:"streams"`
+	}
+	var videoInfo VideoInfo
+	err = json.Unmarshal(cmd.Stdout.(*bytes.Buffer).Bytes(), &videoInfo)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse ffprobe output, %w", err)
+	}
+	width := float64(videoInfo.Streams[0].Width)
+	height := float64(videoInfo.Streams[0].Height)
+	ratio := width / height
+	// Check common aspect ratios with tolerance
+	if math.Abs(ratio-16.0/9.0) < 0.1 {
+		return "16:9", nil
+	}
+	if math.Abs(ratio-4.0/3.0) < 0.1 {
+		return "4:3", nil
+	}
+	if math.Abs(ratio-9.0/16.0) < 0.1 {
+		return "9:16", nil // Portrait/vertical video
+	}
+	return "other", nil
 }

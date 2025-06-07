@@ -84,11 +84,26 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// get video aspect ratio
+	var aspect string
+	aspectRatio, err := getVideoAspectRation(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get video aspect ratio", err)
+		return
+	}
+	if aspectRatio == "16:9" {
+		aspect = "landscape"
+	} else if aspectRatio == "9:16" {
+		aspect = "portrait"
+	} else {
+		aspect = "other"
+	}
+
 	// Generate a random base64 string for the S3 key
 	randBytes := make([]byte, 32)
 	rand.Read(randBytes)
 	randStr := base64.RawURLEncoding.EncodeToString(randBytes)
-	key := fmt.Sprintf("%s%s", randStr, ".mp4")
+	key := fmt.Sprintf("%s/%s%s", aspect, randStr, ".mp4")
 	// Upload the video to S3
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
