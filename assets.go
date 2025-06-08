@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -18,9 +20,16 @@ func (cfg apiConfig) ensureAssetsDir() error {
 	return nil
 }
 
-func getAssetPath(videoID, mediaType string) string {
+func getAssetPath(mediaType string) string {
+	base := make([]byte, 32)
+	_, err := rand.Read(base)
+	if err != nil {
+		panic("failed to generate random bytes")
+	}
+	id := base64.RawURLEncoding.EncodeToString(base)
+
 	ext := mediaTypeToExt(mediaType)
-	return fmt.Sprintf("%s%s", videoID, ext)
+	return fmt.Sprintf("%s%s", id, ext)
 }
 
 func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
@@ -41,7 +50,8 @@ func mediaTypeToExt(mediaType string) string {
 
 func getVideoAspectRation(filePath string) (string, error) {
 	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
-	cmd.Stdout = &bytes.Buffer{}
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
 	err := cmd.Run()
 	if err != nil {
 		return "", fmt.Errorf("failed to get video aspect ratio, %w", err)
@@ -54,7 +64,7 @@ func getVideoAspectRation(filePath string) (string, error) {
 		Streams []Stream `json:"streams"`
 	}
 	var videoInfo VideoInfo
-	err = json.Unmarshal(cmd.Stdout.(*bytes.Buffer).Bytes(), &videoInfo)
+	err = json.Unmarshal(stdout.Bytes(), &videoInfo)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse ffprobe output, %w", err)
 	}
@@ -72,4 +82,21 @@ func getVideoAspectRation(filePath string) (string, error) {
 		return "9:16", nil // Portrait/vertical video
 	}
 	return "other", nil
+}
+
+func processVideoForFastStart(filePath string) (string, error) {
+	processedFilePath := fmt.Sprintf("%s.processing", filePath)
+	cmd := exec.Command("ffmpeg", "-i", filePath, "-c", "copy", "-movflags", "faststart", "-f", "mp4", processedFilePath)
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to process video for fast start: %w", err)
+	}
+	fileInfo, err := os.Stat(processedFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get processed file info: %w", err)
+	}
+	if fileInfo.Size() == 0 {
+		return "", fmt.Errorf("processed video file is empty")
+	}
+	return processedFilePath, nil
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"io"
 	"mime"
 	"net/http"
@@ -52,11 +50,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-    // random base64 string for asset path
-	randBytes := make([]byte, 32)
-	rand.Read(randBytes)
-	randStr := base64.RawURLEncoding.EncodeToString(randBytes)
-	assetPath := getAssetPath(randStr, mediaType)
+	assetPath := getAssetPath(mediaType)
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	dst, err := os.Create(assetDiskPath)

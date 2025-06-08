@@ -1,16 +1,16 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
-	"github.com/google/uuid"
 	"io"
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
@@ -84,31 +84,40 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// get video aspect ratio
-	var aspect string
+	var directory string
 	aspectRatio, err := getVideoAspectRation(tempFile.Name())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get video aspect ratio", err)
 		return
 	}
 	if aspectRatio == "16:9" {
-		aspect = "landscape"
+		directory = "landscape"
 	} else if aspectRatio == "9:16" {
-		aspect = "portrait"
+		directory = "portrait"
 	} else {
-		aspect = "other"
+		directory = "other"
 	}
+	key := getAssetPath(mediaType)
+	key = filepath.Join(directory, key)
 
-	// Generate a random base64 string for the S3 key
-	randBytes := make([]byte, 32)
-	rand.Read(randBytes)
-	randStr := base64.RawURLEncoding.EncodeToString(randBytes)
-	key := fmt.Sprintf("%s/%s%s", aspect, randStr, ".mp4")
+	processedFilePath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't process video for fast start", err)
+		return
+	}
+	defer os.Remove(processedFilePath)
+	processedFile, err := os.Open(processedFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't open processed video file", err)
+		return
+	}
+	defer processedFile.Close()
+
 	// Upload the video to S3
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &key,
-		Body:        tempFile,
+		Body:        processedFile,
 		ContentType: &mediaType,
 	},
 	)
